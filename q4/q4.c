@@ -1,38 +1,46 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <dlfcn.h>
+#include <string.h>
 
 int main() {
-    char op[6]; 
+    // buffer for operation name leaving room for null terminator
+    char op[6];
+    // variables to hold our target numbers
     int num1, num2;
 
-    // parse input until EOF or unexpected input format
+    // read exactly three inputs from standard input loop terminates on end of file
     while (scanf("%5s %d %d", op, &num1, &num2) == 3) {
 
+        // buffer for the dynamic library filename
         char libname[16];
+        // construct string with dot slash so linux explicitly checks current directory
         snprintf(libname, sizeof(libname), "./lib%s.so", op);
 
-        void* handle = dlopen(libname, RTLD_LAZY | RTLD_LOCAL);
+        // load the shared library into memory using lazy binding
+        void* handle = dlopen(libname, RTLD_LAZY);
         if (!handle) {
-            fprintf(stderr, "Error loading %s: %s\n", libname, dlerror());
+            // if the library file is missing we print an error and skip to the next iteration
+            fprintf(stderr, "error loading library %s\n", libname);
             continue;
         }
 
-        // get the function pointer (casting through void** to silence compiler warnings)
-        typedef int (*op_func)(int, int);
-        op_func fn;
-        *(void**)(&fn) = dlsym(handle, op);
+        // extract the function pointer by its string name and cast it directly
+        int (*fn)(int, int) = (int (*)(int, int)) dlsym(handle, op);
 
         if (!fn) {
-            fprintf(stderr, "Error finding symbol '%s': %s\n", op, dlerror());
+            // if the function is not found inside the library we print an error
+            fprintf(stderr, "error finding function %s\n", op);
+            // we must close the handle before skipping to prevent a memory leak
             dlclose(handle);
             continue;
         }
 
+        // execute the dynamically loaded function and print the result
         printf("%d\n", fn(num1, num2));
 
-        // unload immediately to handle the 2GB memory constraint
+        // immediately unload the library from ram
+        // this load and unload cycle is what keeps our total memory footprint under the limit
         dlclose(handle);
     }
 
